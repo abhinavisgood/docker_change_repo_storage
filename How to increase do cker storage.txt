@@ -1,0 +1,35 @@
+14
+
+I also encountered this issue on RHEL machine. I did not find any apt solution anywhere on stack-overflow and docker-hub community. If you are facing this issue even after below command:
+
+docker system prune --all
+
+The solution which worked finally:
+
+    docker info
+        To check current docker storage driver
+        Mine was : Storage Driver: devicemapper; If you have storage driver as overlay2 nothing to worry about. Solution will still work for you.
+    df -h
+        This is to check the available file systems on machine and the path where they are mounted. Two mounted path to have a note:
+        /dev/mapper/rootvg-var 7.6G 1.2G 6.1G 16% /var
+        /dev/mapper/rootvg-apps 60G 9.2G 48G 17% /apps
+        Note- By default docker storage path is /var/lib/docker. It has available space ~6 GB and hence all the space related issues. So basically, I have to move default storage to some other storage where available space is more. For me its File sysyem path '/dev/mapper/rootvg-apps' which is mounted on /apps. Now task is to move /var/lib/docker to something like /apps/newdocker/docker.
+    mkdir /apps/newdocker/docker
+    chmod -R 777 /apps/newdocker/docker
+    Update docker.serive file on linux which resides under: /usr/lib/systemd/system
+        vi /usr/lib/systemd/system/docker.service
+    if storage device is devicemapper , comment existing ExecStart line and add below under [Service]:
+        ExecStart=
+        ExecStart=/usr/bin/dockerd -s devicemapper --storage-opt dm.fs=xfs --storage-opt dm.basesize=40GB -g /apps/newdocker/docker --exec-opt native.cgroupdriver=cgroupfs
+    Or if storage device is overlay2:
+        just add -g /apps/newdocker/docker in the existing ExexStart statement.
+        Something like ExecStart=/usr/bin/dockerd -g /apps/newdocker/docker -H fd:// --containerd=/run/containerd/containerd.sock
+    rm -rf /var/lib/docker (It will delete all existing docker data)
+    systemctl stop docker
+    ps aux | grep -i docker | grep -v grep
+        If no output has been produced by the above command, reload systemd daemon by below command.
+    systemctl daemon-reload
+    systemctl start docker
+    docker info
+        Check out the Data Space Available: 62.15GB after mouting to docker to new File system.
+    DONE
